@@ -15,6 +15,8 @@
  */
 package retrofit2;
 
+import static java.util.Collections.unmodifiableList;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -40,8 +42,6 @@ import retrofit2.http.GET;
 import retrofit2.http.HTTP;
 import retrofit2.http.Header;
 import retrofit2.http.Url;
-
-import static java.util.Collections.unmodifiableList;
 
 /**
  * Retrofit adapts a Java interface to HTTP calls by using annotations on the declared methods to
@@ -71,6 +71,7 @@ public final class Retrofit {
   final HttpUrl baseUrl;
   final List<Converter.Factory> converterFactories;
   final List<CallAdapter.Factory> callAdapterFactories;
+  final int defaultCallAdapterFactoriesSize;
   final @Nullable Executor callbackExecutor;
   final boolean validateEagerly;
 
@@ -80,6 +81,7 @@ public final class Retrofit {
       HttpUrl baseUrl,
       List<Converter.Factory> converterFactories,
       List<CallAdapter.Factory> callAdapterFactories,
+      int defaultCallAdapterFactoriesSize,
       @Nullable Executor callbackExecutor,
       boolean validateEagerly) {
     this.platform = platform;
@@ -87,6 +89,7 @@ public final class Retrofit {
     this.baseUrl = baseUrl;
     this.converterFactories = converterFactories; // Copy+unmodifiable at call site.
     this.callAdapterFactories = callAdapterFactories; // Copy+unmodifiable at call site.
+    this.defaultCallAdapterFactoriesSize = defaultCallAdapterFactoriesSize;
     this.callbackExecutor = callbackExecutor;
     this.validateEagerly = validateEagerly;
   }
@@ -451,7 +454,8 @@ public final class Retrofit {
 
       // Do not add the default BuiltIntConverters and platform-aware converters added by build().
       for (int i = 1,
-              size = retrofit.converterFactories.size() - platform.defaultConverterFactoriesSize();
+              size =
+                  retrofit.converterFactories.size() - platform.defaultConverterFactories().size();
           i < size;
           i++) {
         converterFactories.add(retrofit.converterFactories.get(i));
@@ -460,7 +464,7 @@ public final class Retrofit {
       // Do not add the default, platform-aware call adapters added by build().
       for (int i = 0,
               size =
-                  retrofit.callAdapterFactories.size() - platform.defaultCallAdapterFactoriesSize();
+                  retrofit.callAdapterFactories.size() - retrofit.defaultCallAdapterFactoriesSize;
           i < size;
           i++) {
         callAdapterFactories.add(retrofit.callAdapterFactories.get(i));
@@ -638,12 +642,14 @@ public final class Retrofit {
 
       // Make a defensive copy of the adapters and add the default Call adapter.
       List<CallAdapter.Factory> callAdapterFactories = new ArrayList<>(this.callAdapterFactories);
-      callAdapterFactories.addAll(platform.defaultCallAdapterFactories(callbackExecutor));
+      List<? extends CallAdapter.Factory> defaultCallAdapterFactories =
+          platform.createDefaultCallAdapterFactories(callbackExecutor);
+      callAdapterFactories.addAll(defaultCallAdapterFactories);
 
       // Make a defensive copy of the converters.
       List<Converter.Factory> converterFactories =
           new ArrayList<>(
-              1 + this.converterFactories.size() + platform.defaultConverterFactoriesSize());
+              1 + this.converterFactories.size() + platform.defaultConverterFactories().size());
 
       // Add the built-in converter factory first. This prevents overriding its behavior but also
       // ensures correct behavior when using converters that consume all types.
@@ -657,6 +663,7 @@ public final class Retrofit {
           baseUrl,
           unmodifiableList(converterFactories),
           unmodifiableList(callAdapterFactories),
+          defaultCallAdapterFactories.size(),
           callbackExecutor,
           validateEagerly);
     }
