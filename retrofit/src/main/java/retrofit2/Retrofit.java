@@ -15,8 +15,6 @@
  */
 package retrofit2;
 
-import static java.util.Collections.unmodifiableList;
-
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -43,6 +41,8 @@ import retrofit2.http.HTTP;
 import retrofit2.http.Header;
 import retrofit2.http.Url;
 
+import static java.util.Collections.unmodifiableList;
+
 /**
  * Retrofit adapts a Java interface to HTTP calls by using annotations on the declared methods to
  * define how requests are made. Create instances using {@linkplain Builder the builder} and pass
@@ -66,6 +66,7 @@ import retrofit2.http.Url;
 public final class Retrofit {
   private final Map<Method, ServiceMethod<?>> serviceMethodCache = new ConcurrentHashMap<>();
 
+  final Platform platform;
   final okhttp3.Call.Factory callFactory;
   final HttpUrl baseUrl;
   final List<Converter.Factory> converterFactories;
@@ -74,12 +75,14 @@ public final class Retrofit {
   final boolean validateEagerly;
 
   Retrofit(
+      Platform platform,
       okhttp3.Call.Factory callFactory,
       HttpUrl baseUrl,
       List<Converter.Factory> converterFactories,
       List<CallAdapter.Factory> callAdapterFactories,
       @Nullable Executor callbackExecutor,
       boolean validateEagerly) {
+    this.platform = platform;
     this.callFactory = callFactory;
     this.baseUrl = baseUrl;
     this.converterFactories = converterFactories; // Copy+unmodifiable at call site.
@@ -144,7 +147,6 @@ public final class Retrofit {
             service.getClassLoader(),
             new Class<?>[] {service},
             new InvocationHandler() {
-              private final Platform platform = Platform.get();
               private final Object[] emptyArgs = new Object[0];
 
               @Override
@@ -155,6 +157,7 @@ public final class Retrofit {
                   return method.invoke(this, args);
                 }
                 args = args != null ? args : emptyArgs;
+                Platform platform = Retrofit.this.platform;
                 return platform.isDefaultMethod(method)
                     ? platform.invokeDefaultMethod(method, service, proxy, args)
                     : loadServiceMethod(method).invoke(args);
@@ -183,7 +186,7 @@ public final class Retrofit {
     }
 
     if (validateEagerly) {
-      Platform platform = Platform.get();
+      Platform platform = this.platform;
       for (Method method : service.getDeclaredMethods()) {
         if (!platform.isDefaultMethod(method) && !Modifier.isStatic(method.getModifiers())) {
           loadServiceMethod(method);
@@ -438,11 +441,11 @@ public final class Retrofit {
     }
 
     public Builder() {
-      this(Platform.get());
+      this.platform = Platform.get();
     }
 
     Builder(Retrofit retrofit) {
-      platform = Platform.get();
+      platform = retrofit.platform;
       callFactory = retrofit.callFactory;
       baseUrl = retrofit.baseUrl;
 
@@ -649,6 +652,7 @@ public final class Retrofit {
       converterFactories.addAll(platform.defaultConverterFactories());
 
       return new Retrofit(
+          platform,
           callFactory,
           baseUrl,
           unmodifiableList(converterFactories),
